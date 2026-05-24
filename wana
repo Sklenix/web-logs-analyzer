@@ -1,0 +1,852 @@
+#!/bin/sh
+POSIXLY_CORRECT=yes
+list_ip(){
+    echo "$1"|awk '{print $1}'|sort -u
+    exit 0
+}
+
+list_host(){
+  pole=$(echo "$1"|awk '{print $1}'|sort -u)
+  for d in $pole;do
+        check=$(echo `host $d`)
+        tmp=$(echo `host $d`|awk '{print $5}')
+        tmp2=$(echo "$d"|awk '{print $1}')
+        if [ "$check" = ";;" ];then
+          printf "%s\n" "$tmp2"
+        elif [ "$tmp" = "3(NXDOMAIN)" ] || [ "$tmp" = "2(SERVFAIL)" ];then
+               printf "%s\n" "$tmp2"
+       else
+                printf "%s\n" "$tmp"
+        fi
+  done
+  exit 0
+}
+
+list_uri(){
+  tmp=$(echo "$1"|awk '{print $7}'|egrep -o '/|/[^ ]+')
+  echo "$tmp"|sort -u|uniq
+  exit 0
+}
+
+hist_ip(){
+  count=0
+  adresa=$(echo "$1"|awk '{print $1}'|sort|uniq -c|sort -nr|awk '{printf $2""}{printf "-"}{printf $1""}{print " "}')
+  loop=0
+  buffer=
+  kontrola=0
+  tmp=
+  tmp2=
+  for d in $adresa;do
+    kontrola=`expr $kontrola + 1`
+  done
+  for d in $adresa;do
+          d=$(echo "$d"|awk '{gsub(/\-/," ");}1')
+          tmp=$(echo "$d"|awk '{print $1}')
+          tmp2=$(echo "$d"|awk '{print $2}{printf ""}')
+          buffer=$(printf "%s""$buffer"$(printf "%s %s" "$tmp"m"($tmp2)"":m"))
+          while [ $count -lt $tmp2 ];do
+                  buffer=$(printf "%s" "$buffer"$(printf "%s" "#"))
+                  count=`expr $count + 1`
+          done
+          count=0
+          loop=`expr $loop + 1`
+          if [ $loop -lt $kontrola ];then
+                  buffer=$(printf "%s" "$buffer"$(printf " %s\n" "p"|awk '{gsub(/\p/,"\\n");}1'))
+          else
+                  buffer=$(printf "%s" "$buffer"$(printf " %s" "p"|awk '{gsub(/\p/,"");}1'))
+          fi
+  done
+  aktualni=0
+  echo "$buffer"|awk '{gsub(/\\n/,"ah");}1'|awk '{gsub(/\m/," ");}1'
+  exit 0
+}
+
+hist_load(){
+
+  if [ "$2" = "Ubuntu" ];then
+    variable=$(echo "$1"|awk -F'[][+]' '{print $2 }'| awk '{gsub(/\:/," ");}1' | awk '{gsub(/\//," ");}1' |awk '{printf $3"-"}''{printf "%02d-",(match("JanFebMarAprMayJunJulAugSepOctNovDec",$2)+2)/3}{print $1" "$4":"$5$6$7}')
+    echo "$variable"|awk '{print substr($0,0,14)":00"}' |sort |uniq -c| awk '{printf("\n%s   ",$0) ; for (i = 0; i<$1 ; i++) {printf("#")};}'|awk '{print $2" "$3" " "("$1"): " $4}'|awk 'NF'|awk '{if (NR!=1) {print}}'
+    exit 0
+
+  else
+    variable=$(echo "$1"|awk -F'[][+]' '{print $2 }'| awk '{gsub(/\:/," ");}1' | awk '{gsub(/\//," ");}1' |awk '{printf $3"-"}''{printf "%02d-",(match("JanFebMarAprMayJunJulAugSepOctNovDec",$2)+2)/3}{print $1" "$4":"$5$6$7}')
+    echo "$variable"|awk '{print substr($0,0,14)"00"}' |sort |uniq -c| awk '{printf("\n%s   ",$0) ; for (i = 0; i<$1 ; i++) {printf("#")};}'|awk '{print $2" "$3" " "("$1"): " $4}'|awk 'NF'|awk '{if (NR!=1) {print}}'
+    exit 0
+  fi
+
+}
+
+#-----------------------------------------------------------------------------------------------------------------
+fileExist=0 #promenna pro kontrolu, zda-li existuje soubor
+vysledek=
+prazdny_vysledek=0
+prikaz=0
+pocet_file=0
+pocet_parametru=0
+pocet_echo=0
+parametr_a=1
+parametr_b=2
+parametr_c=3
+jetamfiltr=0
+argument=0
+pocet_prikaz=0
+sestava=0
+interval=
+kontrola_grep=0
+rozhod=0 # promenna pro kontrolu prikazu, zda-li existuje nejaky prikaz
+
+for arg in "$@"; do # pruchod argumenty
+      if [ -f "$arg" ];then # pokud najdu soubor, tak je to v pohode a zmenim hodnotu na 1
+              fileExist=1
+              pocet_file=`expr $pocet_file + 1`
+      elif [ "$arg" = "-ip" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              pocet_parametru=`expr $pocet_parametru + 1`
+              jetamfiltr=`expr $jetamfiltr + 1`
+      elif [ "$arg" = "-a" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              pocet_parametru=`expr $pocet_parametru + 1`
+              jetamfiltr=`expr $jetamfiltr + 1`
+      elif [ "$arg" = "-b" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              pocet_parametru=`expr $pocet_parametru + 1`
+              jetamfiltr=`expr $jetamfiltr + 1`
+      elif [ "$arg" = "-uri" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              pocet_parametru=`expr $pocet_parametru + 1`
+              jetamfiltr=`expr $jetamfiltr + 1`
+      elif [ "$arg" = "list-ip" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              rozhod=1
+              prikaz=1
+              pocet_prikaz=`expr $pocet_prikaz + 1`
+      elif [ "$arg" = "hist-ip" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              rozhod=4
+              prikaz=1
+              pocet_prikaz=`expr $pocet_prikaz + 1`
+      elif [ "$arg" = "list-hosts" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              rozhod=2
+              prikaz=1
+              pocet_prikaz=`expr $pocet_prikaz + 1`
+      elif [ "$arg" = "list-uri" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              rozhod=3
+              prikaz=1
+              pocet_prikaz=`expr $pocet_prikaz + 1`
+      elif [ "$arg" = "hist-load" ];then #timto zjistim, ze v argumentech je list-ip, zmenim hodnotu na 1
+              rozhod=5
+              prikaz=1
+              pocet_prikaz=`expr $pocet_prikaz + 1`
+      else
+              argument=`expr $argument + 1`
+      fi
+done
+
+if [ $pocet_prikaz -gt 1 ];then
+    exit 1
+fi
+
+
+if [ $jetamfiltr -ne $argument ];then
+  exit 1
+else
+if [ $fileExist -eq 0 ];then
+  if [ ! -t 0 ];then
+  vysledek=$(cat -)
+  if [ $rozhod -eq 1 ];then
+    list_ip "$vysledek"
+    exit 0
+  elif [ $rozhod -eq 2 ];then
+    list_host "$vysledek"
+    exit 0
+  elif [ $rozhod -eq 3 ];then
+    list_uri "$vysledek"
+    exit 0
+  elif [ $rozhod -eq 4 ];then
+    hist_ip "$vysledek"
+    exit 0
+  elif [ $rozhod -eq 5 ];then
+    hist_load "$vysledek"
+    exit 0
+  else
+    echo "$vysledek"
+    exit 0
+  fi
+
+else
+  exit 1
+fi
+fi
+fi
+if [ $# -gt 1 ];then
+  if [ $jetamfiltr -eq 0 ];then
+      if [ $prikaz -eq 0 ];then
+            for arg in "$@"; do
+              if [ -f "$arg" ];then
+                while read line;
+                    do
+                    echo $line
+                done < $arg
+              fi
+            done
+
+      fi
+    fi
+fi
+if [ $# -eq 1 ]; then
+  if [ -f "$1" ];then
+    while read line;
+        do
+        echo $line
+    done < $1
+  fi
+  exit 0
+fi
+vysledek=
+pocet_echo=0
+if [ $jetamfiltr -eq 0 ];then
+      if [ $prikaz -eq 1 ];then
+            if [ $# -ge 1 ]; then #pokud je argument jenom soubor => vypisu
+                  for arg in "$@"; do
+                        if [ -f "$arg" ];then
+                                substring=$(echo $arg | grep -o 'log')
+                                substring2=$(echo $arg | grep -o 'gz')
+                                if [ "$substring2" = "gz" ];then
+                                        substring=
+                                          if [ $pocet_echo -eq 0 ];then
+                                              zaloha=$(echo "$zaloha`gunzip -c "$arg"`")
+
+                                          else
+                                          zaloha=$(echo "$zalohaα`gunzip -c "$arg"`")
+                                          fi
+                                pocet_echo=`expr $pocet_echo + 1`
+                                fi
+                                if [ "$substring" = "log" ];then
+                                      if [ $pocet_echo -eq 0 ];then
+                                          zaloha=$(echo "$zaloha`cat "$arg"`")
+                                      else
+                                          zaloha=$(echo "$zalohaα`cat "$arg"`")
+                                      fi
+                                pocet_echo=`expr $pocet_echo + 1`
+                        fi
+                      fi
+                  done
+                vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+        fi
+    fi
+fi
+
+if [ -f /etc/os-release ]; then
+    distribuce=$NAME
+elif type lsb_release >/dev/null 2>&1; then
+    distribuce=$(lsb_release -si)
+elif [ -f /etc/lsb-release ]; then
+    distribuce=$DISTRIB_ID
+elif [ -f /etc/debian_version ]; then
+    distribuce=Debian
+else
+    distribuce=$(uname -s)
+fi
+
+zaloha=
+hist_promenna=
+file=0
+for arg in "$@"; do
+  shift
+  case "$arg" in
+    "-ip")set -- "$@" "-+" ;;
+    "-uri")set -- "$@" "-2" ;;
+    *)set -- "$@" "$arg"
+  esac
+done
+zaloha=
+cc=0
+d=4
+while getopts ":a:b:+:2:" opt;do
+  case "$opt" in
+    "+")
+    if [ "$vysledek" = "" ];then
+        for arg in "$@"; do
+              cc=`expr $cc + 1`
+              if expr "$OPTARG" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+      substring=$(echo $arg | grep -o 'log')
+      substring2=$(echo $arg | grep -o 'gz')
+
+      if [ "$substring2" = "gz" ];then
+            var=$(gunzip -c $arg|grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+            substring=
+      fi
+
+      if [ "$substring" = "log" ];then
+            var=$(grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' $arg)
+      fi
+    fi
+    if [ -f "$arg" ];then
+      for d in $var; do
+            if [ "$OPTARG" = "$d" ]; then
+              if [ "$substring" = "log" ];then
+                if [ $kontrola_grep -eq 0 ];then
+                  zaloha=$(echo "$zaloha`grep "$d" "$arg"`")
+                  kontrola_grep=`expr $kontrola_grep + 1`
+                  break
+                fi
+                if [ $kontrola_grep -gt 0 ];then
+                    zaloha=$(echo "$zalohaα`grep "$d" "$arg"`")
+                  kontrola_grep=`expr $kontrola_grep + 1`
+                  break
+                fi
+              fi
+            if [ "$substring2" = "gz" ];then
+              if [ $kontrola_grep -eq 0 ];then
+                zaloha=$(echo "$zaloha`gunzip -c $arg|grep $d`")
+                kontrola_grep=`expr $kontrola_grep + 1`
+                break
+              fi
+              if [ $kontrola_grep -gt 0 ];then
+                zaloha=$(echo "$zalohaα`gunzip -c $arg|grep $d`")
+                kontrola_grep=`expr $kontrola_grep + 1`
+                break
+              fi
+            fi
+fi
+done
+substring2=
+substring=
+fi
+#----------------------------------------------------------------------------------------------------------
+substring=$(echo $arg | grep -o 'log')
+substring2=$(echo $arg | grep -o 'gz')
+      if [ "$substring" = "log" ];then
+            var=$(egrep -o '[a-fA-F0-9:]*' $arg)
+      fi
+      if [ "$substring2" = "gz" ];then
+            var=$(gunzip -c $arg|egrep -o '[a-fA-F0-9:]*')
+      fi
+
+
+if [ -f "$arg" ];then
+            for d in $var; do
+                  if [ "$OPTARG" = "$d" ]; then
+                    if [ "$substring" = "log" ];then
+                      if [ $kontrola_grep -eq 0 ];then
+                        zaloha=$(echo "$zaloha`grep "$d" "$arg"`")
+                        kontrola_grep=`expr $kontrola_grep + 1`
+                        break
+                      fi
+                      if [ $kontrola_grep -gt 0 ];then
+                          zaloha=$(echo "$zalohaα`grep "$d" "$arg"`")
+                        kontrola_grep=`expr $kontrola_grep + 1`
+                        break
+                      fi
+                    fi
+                  if [ "$substring2" = "gz" ];then
+
+                    if [ $kontrola_grep -eq 0 ];then
+                      zaloha=$(echo "$zaloha`gunzip -c $arg|grep $d`")
+                      kontrola_grep=`expr $kontrola_grep + 1`
+                      break
+                    fi
+                    if [ $kontrola_grep -gt 0 ];then
+                      zaloha=$(echo "$zalohaα`gunzip -c $arg|grep $d`")
+                      kontrola_grep=`expr $kontrola_grep + 1`
+                      break
+                    fi
+                  fi
+fi
+  done
+substring2=
+substring=
+fi
+done
+vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+if [ "$vysledek" = "" ];then
+if expr "$OPTARG" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+  exit 0
+else
+ exit 1
+fi
+fi
+#------------------------------------------------------------------------------------------------------------------------------------
+else
+kontrola_grep=0
+if [ "$vysledek" = "" ];then
+if expr "$OPTARG" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+  exit 0
+else
+ exit 1
+fi
+fi
+zaloha=
+if expr "$OPTARG" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+        var=$(echo "$vysledek"|grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+      else
+        var=$(echo "$vysledek"|egrep -o '[a-fA-F0-9:]*')
+fi
+        for d in $var; do
+              if [ "$OPTARG" = "$d" ]; then
+                  if [ $kontrola_grep -eq 0 ];then
+                    zaloha=$(echo "$zaloha`echo "$vysledek"|grep "$d"`")
+                else
+                    zaloha=$(echo "$zalohaα`echo "$vysledek"|grep "$d"`")
+                fi
+                kontrola_grep=`expr $kontrola_grep + 1`
+                  break
+              fi
+                done
+fi
+vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+
+if [ "$vysledek" = "" ];then
+if expr "$OPTARG" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+  exit 0
+else
+ exit 1
+fi
+fi
+     ;;
+    "a")
+poct=0
+zaloha=
+pocet_echo=0
+
+if [ "$vysledek" = ""  ];then
+
+  #----------------------------------pruchod cyklem--------------------------------------------------------
+for arg in "$@"; do
+
+poct=`expr $poct + 1`
+    if [ -f "$arg" ];then
+      substring=$(echo $arg | grep -o 'log')
+      substring2=$(echo $arg | grep -o 'gz')
+      if [ "$substring2" = "gz" ];then
+            dates=$(gunzip -c $arg| awk -F'[][+]' '{print $2}'|sort -u|awk '{gsub(/\//,"-");}1')
+            var=$(gunzip -c $arg)
+            substring=
+        fi
+      if [ "$substring" = "log" ];then
+       dates=$(awk -F'[][+]' '{print $2}' "$arg"|sort -u|awk '{gsub(/\//,"-");}1')
+      fi
+        for i in $dates;do
+          if [ "$distribuce" = "CentOS" ];then
+            date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+            is_valid=$?
+            if [ $is_valid -eq 1 ];then
+              exit 1
+            fi
+          elif [ "$distribuce" = "Ubuntu" ];then
+            date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+            is_valid=$?
+            if [ $is_valid -eq 1 ];then
+              exit 1
+            fi
+          elif [ "$distribuce" = "FreeBSD" ];then
+            gdate "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+            is_valid=$?
+            if [ $is_valid -eq 1 ];then
+              exit 1
+            fi
+          else
+            date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+            is_valid=$?
+            if [ $is_valid -eq 1 ];then
+              exit 1
+            fi
+          fi
+          tmp=`echo "$i"|sed 's/\:/ /'`
+
+          if [ "$distribuce" = "CentOS" ];then
+            souborDate=`date --date="$tmp" +%s`
+            uzivatelDate=`date --date="$OPTARG" +%s`
+
+          elif [ "$distribuce" = "Ubuntu" ];then
+            souborDate=`date --date="$tmp" +%s`
+            uzivatelDate=`date --date="$OPTARG" +%s`
+
+          elif [ "$distribuce" = "FreeBSD" ];then
+            souborDate=`gdate --date="$tmp" +%s`
+            uzivatelDate=`gdate --date="$OPTARG" +%s`
+          else
+            souborDate=`date --date="$tmp" +%s`
+            uzivatelDate=`date --date="$OPTARG" +%s`
+
+          fi
+
+          if [ $uzivatelDate -lt $souborDate ];then
+          tmp2=`echo "$tmp"| awk '{gsub(/\-/,"/");}1'|awk '{gsub(/\ /,":");}1'`
+
+
+          if [ "$substring" = "log" ];then
+
+            if [ $pocet_echo -eq 0 ];then
+
+              zaloha=$(echo "$zaloha`grep "$tmp2" "$arg"`")
+
+            else
+              zaloha=$(echo "$zalohaα`grep "$tmp2" "$arg"`")
+            fi
+            pocet_echo=`expr $pocet_echo + 1`
+          else
+
+          if [ "$substring2" = "gz" ];then
+
+            if [ $pocet_echo -eq 0 ];then
+
+              zaloha=$(echo "$zaloha`echo "$var"|grep "$tmp2"`")
+            else
+              zaloha=$(echo "$zalohaα`echo "$var"|grep "$tmp2"`")
+            fi
+            pocet_echo=`expr $pocet_echo + 1`
+
+        fi
+    fi
+  fi
+        done
+
+fi
+done
+
+vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+
+#---------------------------------------------------------------------------------------------------------------
+
+else
+  if [ "$vysledek" = "" ];then
+    exit 0
+  fi
+         dates=$(echo "$vysledek"|awk -F'[][+]' '{print $2}'|sort -u|awk '{gsub(/\//,"-");}1')
+          for i in $dates;do
+
+            tmp=`echo "$i"|sed 's/\:/ /'`
+            if [ "$distribuce" = "CentOS" ];then
+              date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+              is_valid=$?
+              if [ $is_valid -eq 1 ];then
+                exit 1
+              fi
+            elif [ "$distribuce" = "Ubuntu" ];then
+              date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+              is_valid=$?
+              if [ $is_valid -eq 1 ];then
+                exit 1
+              fi
+            elif [ "$distribuce" = "FreeBSD" ];then
+              gdate "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+              is_valid=$?
+              if [ $is_valid -eq 1 ];then
+                exit 1
+              fi
+            else
+              date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+              is_valid=$?
+              if [ $is_valid -eq 1 ];then
+                exit 1
+              fi
+            fi
+            if [ "$distribuce" = "CentOS" ];then
+              souborDate=`date --date="$tmp" +%s`
+              uzivatelDate=`date --date="$OPTARG" +%s`
+
+            elif [ "$distribuce" = "Ubuntu" ];then
+              souborDate=`date --date="$tmp" +%s`
+              uzivatelDate=`date --date="$OPTARG" +%s`
+
+            elif [ "$distribuce" = "FreeBSD" ];then
+              souborDate=`gdate --date="$tmp" +%s`
+              uzivatelDate=`gdate --date="$OPTARG" +%s`
+            else
+              souborDate=`date --date="$tmp" +%s`
+              uzivatelDate=`date --date="$OPTARG" +%s`
+            fi
+
+            if [ $uzivatelDate -lt $souborDate ];then
+            tmp2=`echo "$tmp"| awk '{gsub(/\-/,"/");}1'|awk '{gsub(/\ /,":");}1'`
+
+              if [ $pocet_echo -eq 0 ];then
+                zaloha=$(echo "$zaloha`echo "$vysledek"|grep "$tmp2"`")
+              else
+              zaloha=$(echo "$zalohaα`echo "$vysledek"|grep "$tmp2"`")
+              fi
+              pocet_echo=`expr $pocet_echo + 1`
+      fi
+          done
+          vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+fi
+
+if [ "$vysledek" = "" ];then
+    exit 0
+fi
+
+#------------------------------------------------------------------------------------------
+    ;;
+    "b")
+    poct=0
+    zaloha=
+    pocet_echo=0
+    if [ "$vysledek" = "" ];then
+      #----------------------------------pruchod cyklem--------------------------------------------------------
+    for arg in "$@"; do
+    poct=`expr $poct + 1`
+        if [ -f "$arg" ];then
+          substring=$(echo $arg | grep -o 'log')
+          substring2=$(echo $arg | grep -o 'gz')
+          if [ "$substring2" = "gz" ];then
+                dates=$(gunzip -c $arg| awk -F'[][+]' '{print $2}'|sort -u|awk '{gsub(/\//,"-");}1')
+                var=$(gunzip -c $arg)
+                substring=
+            fi
+          if [ "$substring" = "log" ];then
+           dates=$(awk -F'[][+]' '{print $2}' "$arg"|sort -u|awk '{gsub(/\//,"-");}1')
+          fi
+            for i in $dates;do
+              tmp=`echo "$i"|sed 's/\:/ /'`
+              if [ "$distribuce" = "CentOS" ];then
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              elif [ "$distribuce" = "Ubuntu" ];then
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              elif [ "$distribuce" = "FreeBSD" ];then
+                gdate "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              else
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              fi
+
+              if [ "$distribuce" = "CentOS" ];then
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+
+              elif [ "$distribuce" = "Ubuntu" ];then
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+
+              elif [ "$distribuce" = "FreeBSD" ];then
+                souborDate=`gdate --date="$tmp" +%s`
+                uzivatelDate=`gdate --date="$OPTARG" +%s`
+              else
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+              fi
+
+              if [ $uzivatelDate -gt $souborDate ];then
+              tmp2=`echo "$tmp"| awk '{gsub(/\-/,"/");}1'|awk '{gsub(/\ /,":");}1'`
+
+              if [ "$substring" = "log" ];then
+                if [ $pocet_echo -eq 0 ];then
+
+                  zaloha=$(echo "$zaloha`grep "$tmp2" "$arg"`")
+                else
+                  zaloha=$(echo "$zalohaα`grep "$tmp2" "$arg"`")
+                fi
+                pocet_echo=`expr $pocet_echo + 1`
+              else
+                if [ "$substring2" = "gz" ];then
+
+                  if [ $pocet_echo -eq 0 ];then
+
+                    zaloha=$(echo "$zaloha`echo "$var"|grep "$tmp2"`")
+                  else
+                    zaloha=$(echo "$zalohaα`echo "$var"|grep "$tmp2"`")
+                  fi
+                  pocet_echo=`expr $pocet_echo + 1`
+
+              fi
+        fi
+      fi
+            done
+    fi
+    done
+    vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+    #---------------------------------------------------------------------------------------------------------------
+  else
+    if [ "$vysledek" = "" ];then
+    exit 1
+    fi
+           dates=$(echo "$vysledek"|awk -F'[][+]' '{print $2}'|sort -u|awk '{gsub(/\//,"-");}1')
+            for i in $dates;do
+              tmp=`echo "$i"|sed 's/\:/ /'`
+              if [ "$distribuce" = "CentOS" ];then
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              elif [ "$distribuce" = "Ubuntu" ];then
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              elif [ "$distribuce" = "FreeBSD" ];then
+                gdate "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              else
+                date "+%d/%m/%Y" -d "$OPTARG" > /dev/null 2>&1
+                is_valid=$?
+                if [ $is_valid -eq 1 ];then
+                  exit 1
+                fi
+              fi
+              if [ "$distribuce" = "CentOS" ];then
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+
+              elif [ "$distribuce" = "Ubuntu" ];then
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+
+              elif [ "$distribuce" = "FreeBSD" ];then
+                souborDate=`gdate --date="$tmp" +%s`
+                uzivatelDate=`gdate --date="$OPTARG" +%s`
+              else
+                souborDate=`date --date="$tmp" +%s`
+                uzivatelDate=`date --date="$OPTARG" +%s`
+              fi
+
+              if [ $uzivatelDate -gt $souborDate ];then
+              tmp2=`echo "$tmp"| awk '{gsub(/\-/,"/");}1'|awk '{gsub(/\ /,":");}1'`
+
+                if [ $pocet_echo -eq 0 ];then
+                  zaloha=$(echo "$zaloha`echo "$vysledek"|grep "$tmp2"`")
+                else
+                zaloha=$(echo "$zalohaα`echo "$vysledek"|grep "$tmp2"`")
+                fi
+                pocet_echo=`expr $pocet_echo + 1`
+        fi
+            done
+            vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+  fi
+  if [ "$vysledek" = "" ];then
+  exit 1
+  fi
+    ;;
+    "2")
+    a=0
+    poct=0
+    pokus=
+    zaloha=
+    pocet_echo=0
+    line=
+    if [ "$vysledek" = ""  ];then
+      #----------------------------------pruchod cyklem--------------------------------------------------------
+    for arg in "$@"; do
+    if [ -f "$arg" ];then
+      substring=$(echo $arg | grep -o 'log')
+      substring2=$(echo $arg | grep -o 'gz')
+      if [ "$substring2" = "gz" ];then
+        tmp5=$(zcat $arg)
+        substring=
+        IFS='
+'
+set -f
+for line in $tmp5; do
+  kontrolni=$(echo "$line"|awk '{print $6}'|awk '{gsub(/\"/,"");}1')
+  tmp4=$(echo "$line"|awk '{print $7}')
+  if [ "$kontrolni" = "POST" ] || [ "$kontrolni" = "GET" ] || [ "$kontrolni" = "HEAD" ];then
+  if echo $tmp4 | grep -Eq $OPTARG;then
+  if [ $pocet_echo -eq 0 ];then
+        zaloha=$(echo "$zaloha`echo "$line"`")
+  else
+        zaloha=$(echo "$zalohaα`echo "$line"`")
+  fi
+pocet_echo=`expr $pocet_echo + 1`
+fi
+fi
+done
+set +f
+unset IFS
+#------------------------GZ
+fi
+      if [ "$substring" = "log" ];then
+        tmp3=$(cat "$arg")
+        IFS='
+'
+set -f
+for line in $tmp3; do
+  kontrolni=$(echo "$line"|awk '{print $6}'|awk '{gsub(/\"/,"");}1')
+  tmp4=$(echo "$line"|awk '{print $7}')
+
+  if [ "$kontrolni" = "POST" ] || [ "$kontrolni" = "GET" ] || [ "$kontrolni" = "HEAD" ];then
+  if echo $tmp4 | grep -Eq $OPTARG;then
+
+  if [ $pocet_echo -eq 0 ];then
+        zaloha=$(echo "$zaloha`echo "$line"`")
+  else
+        zaloha=$(echo "$zalohaα`echo "$line"`")
+  fi
+pocet_echo=`expr $pocet_echo + 1`
+fi
+fi
+done
+set +f
+unset IFS
+      fi
+    fi
+  done
+  vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+  if [ "$vysledek" = "" ];then
+    exit 0
+  fi
+else
+
+  IFS='
+'
+set -f
+for line in $vysledek; do
+  kontrolni=$(echo "$line"|awk '{print $6}'|awk '{gsub(/\"/,"");}1')
+  tmp4=$(echo "$line"|awk '{print $7}')
+  if [ "$kontrolni" = "POST" ] || [ "$kontrolni" = "GET" ] || [ "$kontrolni" = "HEAD" ];then
+  if echo $tmp4 | grep -Eq $OPTARG;then
+
+  if [ $pocet_echo -eq 0 ];then
+        zaloha=$(echo "$zaloha`echo "$line"`")
+  else
+        zaloha=$(echo "$zalohaα`echo "$line"`")
+  fi
+pocet_echo=`expr $pocet_echo + 1`
+fi
+fi
+done
+set +f
+unset IFS
+vysledek=$(echo "$zaloha"|awk '{gsub(/\α/,"\n");}1')
+fi
+    ;;
+    "?")
+          exit 1
+    ;;
+  esac
+done
+shift $(expr $OPTIND - 1)
+if [ "$vysledek" = "" ];then
+    exit 0
+fi
+if [ $rozhod -eq 1 ];then
+  list_ip "$vysledek"
+  exit 0
+elif [ $rozhod -eq 2 ];then
+  list_host "$vysledek"
+  exit 0
+elif [ $rozhod -eq 3 ];then
+  list_uri "$vysledek"
+  exit 0
+elif [ $rozhod -eq 4 ];then
+  hist_ip "$vysledek"
+  exit 0
+elif [ $rozhod -eq 5 ];then
+  hist_load "$vysledek" "$distribuce"
+  exit 0
+else
+  echo "$vysledek"
+  exit 0
+fi
